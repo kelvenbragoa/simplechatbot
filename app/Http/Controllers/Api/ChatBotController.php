@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Course;
+use App\Models\Interactions;
+use App\Models\Student;
 use App\Notifications\WhatsappNotification;
 use App\Trait\WhatsAppRecipient as TraitWhatsAppRecipient;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -85,26 +89,50 @@ class ChatBotController extends Controller
                     $from = $message['from'];
                     $text = $message['text']['body'] ?? '';
 
-                    if (strtolower($text) === 'olá' || strtolower($text) === 'oi') {
-                        $this->sendWhatsAppMessage($from, 'Bem-vindo à Gerson Houane Store! Como posso te ajudar?', [
-                        'Ver produtos 🛒' => 'ver_produtos',
-                        'Rastrear pedido 📦' => 'acompanhar_pedido',
-                        'Falar com suporte 💬' => 'falar_atendente',
-                    ]);
+                    if (strtolower($text) === 'olá' || strtolower($text) === 'oi' || strtolower($text) === 'ajuda') {
+                        $this->sendWhatsAppMessage($from, 'Universidade Católica de Moçambique. Como posso ajudar?', [
+                        // 'Ver cursos' => 'ver_cursos',
+                        'Situação academica' => 'situacao_academica',
+                        'Situação financeira' => 'situacao_financeira',
+                        ]);
                     }
+                }
+                if (Cache::has("awaiting_student_number_$from")) {
+                    $tipo = Cache::pull("awaiting_student_number_$from");
+                    return $this->consultarSituacao($from, $text, $tipo);
                 }
 
                 if (isset($message['type']) && $message['type'] === 'interactive') {
-                    $button_reply_id = $message['interactive']['button_reply']['id'] ?? null;
 
-                    if ($button_reply_id === 'ver_produtos') {
-                        $this->sendProductList($from);
-                    }elseif ($button_reply_id === 'acompanhar_pedido') {
-                        $this->askTrackingCode($from);
+
+                    $payload = $message['interactive']['button_reply']['id'] ?? null;
+
+                    switch ($payload) {
+                        case 'ver_cursos':
+                            $courses = Course::limit(10)->get();
+                            $texto = "📚 *Cursos disponíveis:*\n\n";
+                            foreach ($courses as $curso) {
+                                $texto .= "🔹 *{$curso->name}*\nCódigo: {$curso->code}\nDepartamento: {$curso->department}\n\n";
+                            }
+                            Interactions::create(['user_phone' => $from,'option' => 'ver_cursos',]);
+                            $this->enviarMensagemWhatsApp($from, $texto);
+                            break;
+
+                        
+
+                        case 'situacao_academica':
+                            Cache::put("awaiting_student_number_$from", 'academica', now()->addSeconds(15));
+                            Interactions::create(['user_phone' => $from,'option' => 'situacao_academica',]);
+                            $this->enviarMensagemWhatsApp($from, "Por favor, envie o número do seu código de estudante para verificarmos o estado da sua situação academica.");
+                            break;
+
+                        case 'situacao_financeira':
+                            Cache::put("awaiting_student_number_$from", 'financeira', now()->addSeconds(15));
+                            Interactions::create(['user_phone' => $from,'option' => 'situacao_financeira',]);
+                            $this->enviarMensagemWhatsApp($from, "Por favor, envie o número do seu código de estudante para verificarmos o estado da sua situação financeira.");
+                            break;
                     }
-                    elseif ($button_reply_id === 'falar_atendente') {
-                        $this->notifyAttendant($from);
-                    }
+
                 }
 
                         
@@ -115,6 +143,66 @@ class ChatBotController extends Controller
             }
 
             
+        }
+
+        private function sendWhatsAppMessage($to, $message, $buttons = [])
+        {
+            try {
+                $token = 'EAAQZCPJhz2wYBO5vcfZCCMfvbIOvujugelg0DDGZAHZBC51dhH7P68Xob46OorOFhk05OkvtEvsMniN8i7Q8YgFGVwKZBbLnynHUBboENOX19McBKVXJ8ZC6CFvOAnOJHQPlgpZBUkONpWR30ZAQETfHlULTqXixrXj9OHPkBKrZBBnmatM3CB0p3SlhyCZBXXLbHaTwZDZD';
+                $phone_number_id = '397344770133312'; 
+
+                $buttonPayload = [];
+                foreach ($buttons as $title => $payload) {
+                    $buttonPayload[] = [
+                        'type' => 'reply',
+                        'reply' => [
+                            'id' => $payload, 
+                            'title' => $title,
+                        ]
+                    ];
+                }
+
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                ])->post("https://graph.facebook.com/v22.0/{$phone_number_id}/messages", [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $to,
+                    'type' => 'interactive',
+                    'interactive' => [
+                        'type' => 'button',
+                        'body' => [
+                            'text' => $message,
+                        ],
+                        'action' => [
+                            'buttons' => $buttonPayload,
+                        ],
+                    ],
+                ]);
+                Log::error('Erro ao enviar mensagem1: ' . $response->body());
+
+                if ($response->failed()) {
+                    logger('Erro ao enviar mensagem2: ' . $response->body());
+                }
+            } catch (\Throwable $th) {
+                Log::error('Erro ao enviar mensagem3: ' . $th->getMessage());
+            }
+        }
+
+        private function consultarSituacao($from, $studentNumber, $tipo)
+        {
+            $student = Student::where('student_number', $studentNumber)->first();
+
+            if (!$student) {
+                return $this->enviarMensagemWhatsApp($from, "Número de estudante não encontrado. Verifique e envie novamente.");
+            }
+
+            if ($tipo === 'financeira') {
+                return $this->enviarMensagemWhatsApp($from, "Situação financeira de {$student->name}: *{$student->financial_status}*.");
+            }
+
+            if ($tipo === 'academica') {
+                return $this->enviarMensagemWhatsApp($from, "Situação acadêmica de {$student->name}: *{$student->academic_status}*.");
+            }
         }
 
         private function askTrackingCode($to)
@@ -182,49 +270,5 @@ class ChatBotController extends Controller
             }
         }
 
-private function sendWhatsAppMessage($to, $message, $buttons = [])
-{
-    try {
-        $token = 'EAAQZCPJhz2wYBO5vcfZCCMfvbIOvujugelg0DDGZAHZBC51dhH7P68Xob46OorOFhk05OkvtEvsMniN8i7Q8YgFGVwKZBbLnynHUBboENOX19McBKVXJ8ZC6CFvOAnOJHQPlgpZBUkONpWR30ZAQETfHlULTqXixrXj9OHPkBKrZBBnmatM3CB0p3SlhyCZBXXLbHaTwZDZD';
-        $phone_number_id = '397344770133312'; 
 
-        
-
-
-        $buttonPayload = [];
-        foreach ($buttons as $title => $payload) {
-            $buttonPayload[] = [
-                'type' => 'reply',
-                'reply' => [
-                    'id' => $payload, 
-                    'title' => $title,
-                ]
-            ];
-        }
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $token,
-        ])->post("https://graph.facebook.com/v22.0/{$phone_number_id}/messages", [
-            'messaging_product' => 'whatsapp',
-            'to' => $to,
-            'type' => 'interactive',
-            'interactive' => [
-                'type' => 'button',
-                'body' => [
-                    'text' => $message,
-                ],
-                'action' => [
-                    'buttons' => $buttonPayload,
-                ],
-            ],
-        ]);
-        Log::error('Erro ao enviar mensagem1: ' . $response->body());
-
-        if ($response->failed()) {
-            logger('Erro ao enviar mensagem2: ' . $response->body());
-        }
-    } catch (\Throwable $th) {
-        Log::error('Erro ao enviar mensagem3: ' . $th->getMessage());
-    }
-}
 }
