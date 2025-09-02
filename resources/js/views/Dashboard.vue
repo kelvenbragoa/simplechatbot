@@ -4,6 +4,8 @@ import NotificationsWidget from '@/components/dashboard/NotificationsWidget.vue'
 import RecentSalesWidget from '@/components/dashboard/RecentSalesWidget.vue';
 import RevenueStreamWidget from '@/components/dashboard/RevenueStreamWidget.vue';
 import StatsWidget from '@/components/dashboard/StatsWidget.vue';
+import FloatingChat from '@/components/FloatingChat.vue';
+
 </script>
 
 <template>
@@ -19,4 +21,5 @@ import StatsWidget from '@/components/dashboard/StatsWidget.vue';
             <NotificationsWidget />
         </div>
     </div>
+    <FloatingChat />
 </template>

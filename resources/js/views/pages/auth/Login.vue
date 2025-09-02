@@ -1,5 +1,7 @@
 <script setup>
 import FloatingConfigurator from '@/components/FloatingConfigurator.vue';
+import FloatingChat from '@/components/FloatingChat.vue';
+
 import { ref } from 'vue';
 
 const email = ref('');
@@ -49,12 +51,13 @@ const checked = ref(false);
                             </div>
                             <span class="font-medium no-underline ml-2 text-right cursor-pointer text-primary">Forgot password?</span>
                         </div>
-                        <Button label="Sign In" class="w-full" as="router-link" to="/"></Button>
+                        <Button label="Sign In" class="w-full" as="router-link" to="/admin/dashboard"></Button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    <FloatingChat />
 </template>
 
 <style scoped>

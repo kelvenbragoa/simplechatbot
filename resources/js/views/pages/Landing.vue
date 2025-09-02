@@ -5,6 +5,8 @@ import HeroWidget from '@/components/landing/HeroWidget.vue';
 import HighlightsWidget from '@/components/landing/HighlightsWidget.vue';
 import PricingWidget from '@/components/landing/PricingWidget.vue';
 import TopbarWidget from '@/components/landing/TopbarWidget.vue';
+import FloatingChat from '@/components/FloatingChat.vue';
+
 </script>
 
 <template>
@@ -18,6 +20,7 @@ import TopbarWidget from '@/components/landing/TopbarWidget.vue';
             <HighlightsWidget />
             <PricingWidget />
             <FooterWidget />
+            <FloatingChat />
         </div>
     </div>
 </template>
